@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.ollama_client import OllamaClient
+from backend.ollama_client import OllamaClient, same_origin
 from backend.orchestrator import (
     AgentOrchestrator,
     SkillNotFoundError,
@@ -100,6 +100,15 @@ def test_get_status_shape(harness: AgentOrchestrator) -> None:
     assert set(status["loaded_skills"]) == EXPECTED_SKILLS
     assert status["total_requests"] == 0
     assert status["uptime_seconds"] >= 0
+
+
+def test_same_origin_detects_the_api_host() -> None:
+    """The dashboard must not treat the FastAPI URL as an Ollama server."""
+    api = "https://agentflow-api-m9lc.onrender.com"
+    assert same_origin(api, api + "/")
+    assert same_origin(api + "/api/tags", api)
+    assert not same_origin("http://127.0.0.1:11434", api)
+    assert not same_origin("", api)
 
 
 def test_fallback_detects_summary_prompt() -> None:

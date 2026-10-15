@@ -19,6 +19,8 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 
+from backend.ollama_client import same_origin
+
 load_dotenv()
 
 st.set_page_config(page_title="AgentFlow", page_icon="🤖", layout="wide")
@@ -27,7 +29,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 EXPORTS_DIR = PROJECT_ROOT / "exports"
 EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 API_BASE = os.getenv("AGENTFLOW_API_URL", "http://localhost:8000").rstrip("/")
-DEFAULT_OLLAMA = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+_CONFIGURED_OLLAMA = os.getenv("OLLAMA_HOST", "http://localhost:11434").strip()
+DEFAULT_OLLAMA = (
+    "http://127.0.0.1:11434"
+    if same_origin(_CONFIGURED_OLLAMA, API_BASE)
+    else _CONFIGURED_OLLAMA
+)
+OLLAMA_OFFLINE = (
+    "Ollama is not running on this Render service. Direct Chat and "
+    "Enhance with LLM still work, and each answer is labeled source: fallback."
+)
 MODELS = ["llama3", "mistral", "codellama", "phi3"]
 
 st.markdown(
@@ -124,8 +135,15 @@ def probe_ollama(url: str) -> tuple[bool, list[str], str]:
     Returns:
         Reachability, model names, and a short status sentence.
     """
+    cleaned = url.strip().rstrip("/")
+    if same_origin(cleaned, API_BASE):
+        return (
+            False,
+            [],
+            "That address is the AgentFlow API, not an Ollama server. " + OLLAMA_OFFLINE,
+        )
     try:
-        response = requests.get(f"{url.rstrip('/')}/api/tags", timeout=3)
+        response = requests.get(f"{cleaned}/api/tags", timeout=3)
         response.raise_for_status()
         payload = response.json()
         names = [
@@ -135,6 +153,8 @@ def probe_ollama(url: str) -> tuple[bool, list[str], str]:
         ]
         return True, names, f"Connected. {len(names)} model(s) installed."
     except requests.RequestException as exc:
+        if os.getenv("RENDER"):
+            return False, [], OLLAMA_OFFLINE
         return False, [], f"Could not reach Ollama: {exc}"
     except ValueError as exc:
         return False, [], f"Ollama returned invalid JSON: {exc}"
@@ -492,13 +512,14 @@ with st.sidebar:
         ok, names, message = probe_ollama(ollama_url)
         st.session_state["ollama_probe"] = {"ok": ok, "names": names, "message": message}
     probe = st.session_state.get("ollama_probe")
-    if probe:
-        if probe["ok"]:
-            st.success("✅ " + probe["message"])
-            if probe["names"]:
-                st.caption(", ".join(probe["names"]))
-        else:
-            st.error("❌ " + probe["message"])
+    if probe and probe["ok"]:
+        st.success("✅ " + probe["message"])
+        if probe["names"]:
+            st.caption(", ".join(probe["names"]))
+    elif os.getenv("RENDER"):
+        st.info(OLLAMA_OFFLINE)
+    elif probe:
+        st.warning(probe["message"])
 
     model = st.selectbox("Model", MODELS, index=0)
     temperature = st.slider("Temperature", min_value=0.0, max_value=2.0, value=0.7, step=0.1)

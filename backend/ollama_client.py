@@ -11,10 +11,26 @@ import logging
 import re
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
 logger = logging.getLogger("agentflow.ollama")
+
+
+def same_origin(left: str, right: str) -> bool:
+    """Return whether two URLs point at the same host and port.
+
+    Args:
+        left: First URL or origin.
+        right: Second URL or origin.
+
+    Returns:
+        True when both have a network location and those locations match.
+    """
+    left_host = urlparse((left or "").strip()).netloc.lower()
+    right_host = urlparse((right or "").strip()).netloc.lower()
+    return bool(left_host) and left_host == right_host
 
 _HEALTH_TIMEOUT_SECONDS = 3
 _GENERATE_TIMEOUT_SECONDS = 120
@@ -212,6 +228,10 @@ class OllamaClient:
             Either an Ollama completion or a fallback completion.
         """
         logger.info("Attempting Ollama generate model=%s", model)
+        healthy, _models = self.health_check()
+        if not healthy:
+            logger.warning("Ollama is unreachable at %s; using fallback", self.base_url)
+            return self.fallback_generate(prompt, model=model)
         try:
             result = self.generate(prompt, model=model, temperature=temperature)
         except Exception as exc:
