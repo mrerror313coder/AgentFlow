@@ -1,0 +1,34 @@
+# DigitalOcean App Platform spec for AgentFlow.
+# Public source: https://github.com/mrerror313coder/AgentFlow
+# The API and dashboard are separate services. Ollama stays on a Droplet; the
+# fallback path keeps both services usable if that host is unreachable.
+name: agentflow
+services:
+  - name: agentflow-api
+    source_dir: /
+    github:
+      repo: mrerror313coder/AgentFlow
+      branch: main
+    run_command: uvicorn backend.main:app --host 0.0.0.0 --port 8080
+    environment_slug: python
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    envs:
+      - key: OLLAMA_HOST
+        value: http://your-ollama-droplet-ip:11434
+  - name: agentflow-ui
+    source_dir: /
+    github:
+      repo: mrerror313coder/AgentFlow
+      branch: main
+    run_command: streamlit run app.py --server.port 8080 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+    environment_slug: python
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    envs:
+      - key: AGENTFLOW_API_URL
+        value: ${agentflow-api.PUBLIC_URL}
+      - key: OLLAMA_HOST
+        value: http://your-ollama-droplet-ip:11434

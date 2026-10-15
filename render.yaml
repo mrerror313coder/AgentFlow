@@ -1,0 +1,36 @@
+# Render Blueprint for AgentFlow.
+# Connect the GitHub repo and Render creates both services from this file.
+# Ollama is not available on Render; the harness answers with the labeled fallback.
+services:
+  - type: web
+    name: agentflow-api
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: OLLAMA_HOST
+        value: http://127.0.0.1:11434
+  - type: web
+    name: agentflow-ui
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: OLLAMA_HOST
+        value: http://127.0.0.1:11434
+      - key: AGENTFLOW_API_URL
+        fromService:
+          type: web
+          name: agentflow-api
+          envVarKey: RENDER_EXTERNAL_URL
